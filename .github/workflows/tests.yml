@@ -1,0 +1,135 @@
+name: tests
+
+permissions:
+  contents: read
+
+on:
+  pull_request:
+    branches:
+      - dev
+      - main
+
+concurrency:
+  group: ${{github.workflow}}-${{github.ref}}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+
+######################################################################
+#                   General checks/fmt and docs
+######################################################################
+
+  fmt:
+    name: Format
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+      - name: Cache cargo output
+        uses: Swatinem/rust-cache@v2
+      - name: Fmt check
+        run: cargo fmt --check
+
+  check:
+    name: Check
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+      - name: Cache cargo output
+        uses: Swatinem/rust-cache@v2
+      - name: Check
+        run: cargo check
+
+  clippy:
+    name: Clippy
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+      - name: Cache cargo output
+        uses: Swatinem/rust-cache@v2
+      - name: Run clippy
+        run: cargo clippy --no-deps --all-targets -- -D warnings
+
+  docs:
+    name: Docs
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Cache cargo output
+        uses: Swatinem/rust-cache@v2
+      - name: Build docs
+        run: cargo doc --no-deps --all-features
+        env:
+          RUSTFLAGS: "-D warnings"
+
+######################################################################
+#       Unit/integration/coverage tests, multi OS
+######################################################################
+
+  tests:
+    name: Unit and Integration Tests on ${{ matrix.os }}
+    timeout-minutes: 10
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+      fail-fast: false # continue running other OS even if one fails
+
+    steps:
+      - uses: actions/checkout@v4
+      - name: Cache cargo output
+        uses: Swatinem/rust-cache@v2
+      - name: Build
+        run: cargo build
+      - name: Run tests
+        run: cargo test
+
+  coverage:
+    name: Coverage
+    timeout-minutes: 10
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Cache cargo output
+        uses: Swatinem/rust-cache@v2
+
+      - name: Install toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install cargo-llvm-cov
+        uses: taiki-e/install-action@cargo-llvm-cov
+
+      - name: Generate coverage report
+        id: codecov
+        run: |
+          cargo llvm-cov clean --workspace
+          cargo llvm-cov test
+ 
+          new_cov=$(cargo llvm-cov test)
+          new_cov="${new_cov//'%'/'%25'}"
+          new_cov="${new_cov//$'\n'/'%0A'}"
+          new_cov="${new_cov//$'\r'/'%0D'}"
+          echo "::set-output name=new_cov_comment::$new_cov"
+
+      - name: Add PR comment
+        uses: mshick/add-pr-comment@v2
+        with:
+          message: |
+            **Current test coverage**
+
+            ```
+            ${{ steps.codecov.outputs.new_cov_comment }}
+            ```
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO_TOKEN: ${{ secrets.GITHUB_TOKEN }}
