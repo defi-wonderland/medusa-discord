@@ -1,20 +1,32 @@
 [package]
-authors = ["Defi-Wonderland"]
-name = "rust-template"
-description = "Generate a Rust template repo"
-homepage = "https://github.com/defi-wonderland/rust-template"
-version = "1.0.0"
-edition = "2021"
-repository = "https://github.com/defi-wonderland/rust-template"
+name = "medusa-discord"
+authors = ["simon-something", "Defi-Wonderland"]
+
+homepage = "https://github.com/defi-wonderland/medusa-discord"
+version = "0.0.1"
+edition = "2024"
+repository = "https://github.com/defi-wonderland/medusa-discord"
 license = "MIT"
 readme = "readme.MD"
-keywords = [] # Max 5
+keywords = ["medusa", "fuzz", "solidity", "discord", "bot"] # Max 5
 categories = ["command-line-utilities"]
 
-[lib]
-name = "template"
-path = "src/lib.rs"
-
 [[bin]]
-name = "template"
+name = "medusa-discord"
 path = "src/main.rs"
+
+[dependencies]
+serenity = { version = "0.12", features = ["framework", "standard_framework"] }
+tokio = { version = "1.28", features = ["full"] }
+dotenvy = "0.15"
+chrono = "0.4"
+uuid = { version = "1.3", features = ["v4", "fast-rng"] }
+regex = "1.8"
+lazy_static = "1.4"
+async-trait = "0.1"
+log = "0.4"
+env_logger = "0.11.8"
+futures = "0.3"
+poise = "0.6.1"
+tracing = { version = "0.1", features = ["log"] }
+tracing-subscriber = "0.3.18"
