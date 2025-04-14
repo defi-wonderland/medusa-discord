@@ -1,5 +1,4 @@
 use crate::{Error, REPO_DIR};
-use std::fmt::format;
 use std::path::Path;
 use std::process::Command;
 
@@ -95,10 +94,10 @@ pub fn extract_dir_from_url(url: &str) -> Result<String, Error> {
     let dir = url.split('/').last().ok_or("Wrong URL")?;
 
     if dir.contains(".git") {
-        let dir = dir.split(".git").next().ok_or("Wrong URL")?;
-        Ok(dir.to_string())
+        let dir: &str = dir.split(".git").next().ok_or("Wrong URL")?;
+        Ok(dir.to_owned())
     } else {
-        Ok(dir.to_string())
+        Ok(dir.to_owned())
     }
 }
 
@@ -108,7 +107,7 @@ pub fn extract_branch_from_url(url: &str) -> Result<Option<String>, Error> {
 
     if dir.contains(":") {
         let parts = dir.split(":").collect::<Vec<&str>>();
-        Ok(Some(parts[1].to_string()))
+        Ok(Some(parts[1].to_owned()))
     } else {
         Ok(None)
     }
@@ -123,7 +122,7 @@ pub fn extract_url_without_branch(url: &str) -> Result<String, Error> {
     if parts.len() == 3 {
         Ok(format!("{}:{}", parts[0], parts[1]))
     } else if parts.len() == 2 {
-        Ok(url.to_string())
+        Ok(url.to_owned())
     } else {
         Err("Wrong URL".into())
     }

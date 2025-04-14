@@ -7,8 +7,7 @@ use crate::{git::GitRepo, medusa::MedusaHandler};
 
 use poise::serenity_prelude as serenity;
 use std::io::BufRead;
-use std::{collections::HashMap, env::var, fs::OpenOptions, path::Path, sync::Arc, time::Duration};
-use tokio::process::Child;
+use std::{env::var, fs::OpenOptions, path::Path, sync::Arc, time::Duration};
 use tokio::sync::Mutex;
 
 // Types used by all command functions
@@ -61,6 +60,7 @@ fn load_repos() -> Mutex<Vec<GitRepo>> {
         .read(true)
         .write(true)
         .create(true)
+        .truncate(true)
         .open(path)
         .expect("Failed to open or create repos.txt");
 

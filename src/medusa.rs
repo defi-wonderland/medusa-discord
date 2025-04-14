@@ -1,15 +1,6 @@
-use std::{
-    collections::HashMap,
-    env::var,
-    fs::OpenOptions,
-    path::Path,
-    process::{ExitStatus, Stdio},
-    sync::Arc,
-};
-use tokio::process::Child;
+use std::{collections::HashMap, path::Path, process::ExitStatus, sync::Arc};
 use tokio::process::Command;
 use tokio::sync::Mutex;
-use tokio::time::{Duration, timeout};
 
 use crate::Error;
 use crate::MEDUSA_TIMEOUT;
@@ -46,7 +37,7 @@ impl MedusaHandler {
         Self { process }
     }
 
-    pub async fn start_all(self: &Self, repos: Vec<GitRepo>) -> Result<(), Error> {
+    pub async fn start_all(&self, repos: Vec<GitRepo>) -> Result<(), Error> {
         for repo in repos {
             repo.git_sync().await?;
             self.run_medusa(repo.clone()).await?;
@@ -55,7 +46,7 @@ impl MedusaHandler {
         Ok(())
     }
 
-    pub async fn run_medusa(self: &Self, repo: GitRepo) -> Result<u32, Error> {
+    pub async fn run_medusa(&self, repo: GitRepo) -> Result<u32, Error> {
         let mut child = Command::new("medusa")
             .current_dir(Path::new(REPO_DIR).join(repo.name()))
             .arg("fuzz")
@@ -94,7 +85,7 @@ impl MedusaHandler {
         Ok(child_pid)
     }
 
-    pub async fn stop_process(self: &Self, repo: String) -> Result<(), Error> {
+    pub async fn stop_process(&self, repo: String) -> Result<(), Error> {
         let mut map = self.process.lock().await;
 
         let state = map.get(&repo).ok_or(format!("Repo {repo} not found"))?;
@@ -113,7 +104,7 @@ impl MedusaHandler {
         Ok(())
     }
 
-    pub async fn get_process_state(self: &Self, repo: String) -> Result<MedusaState, Error> {
+    pub async fn get_process_state(&self, repo: String) -> Result<MedusaState, Error> {
         let map = self.process.lock().await;
 
         Ok(map
