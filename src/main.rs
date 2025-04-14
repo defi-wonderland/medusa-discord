@@ -2,19 +2,17 @@
 
 mod commands;
 mod git;
+mod medusa;
+use crate::{
+    git::{GitRepo, GitRepoBuilder},
+    medusa::Medusa,
+};
 
-use crate::git::{GitRepo, GitRepoBuilder};
 use poise::serenity_prelude as serenity;
 use std::io::BufRead;
-use std::{
-    collections::HashMap,
-    env::var,
-    fs::OpenOptions,
-    path::Path,
-    sync::{Arc, Mutex},
-    time::Duration,
-};
+use std::{collections::HashMap, env::var, fs::OpenOptions, path::Path, sync::Arc, time::Duration};
 use tokio::process::Child;
+use tokio::sync::Mutex;
 
 // Types used by all command functions
 type Error = Box<dyn std::error::Error + Send + Sync>;
@@ -26,9 +24,7 @@ const REPO_DIR: &str = "repos";
 pub struct Data {
     /// List of all active repo
     repos: Mutex<Vec<GitRepo>>,
-
-    /// List of all active medusa processes (type tbc/placeholder)
-    process: Mutex<HashMap<String, Child>>,
+    medusa_handler: Mutex<Medusa>,
 }
 
 async fn on_error(error: poise::FrameworkError<'_, Data, Error>) {
@@ -159,7 +155,7 @@ async fn main() {
                 poise::builtins::register_globally(ctx, &framework.options().commands).await?;
                 Ok(Data {
                     repos: load_repos(),
-                    process: Mutex::new(HashMap::new()),
+                    medusa_handler: Mutex::new(Medusa::new()),
                 })
             })
         })

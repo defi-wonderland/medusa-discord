@@ -1,4 +1,5 @@
 use crate::git::{GitRepoBuilder, extract_dir_from_url};
+use crate::medusa::MedusaState;
 use crate::{Context, Error, REPO_DIR};
 use std::fs::OpenOptions;
 use std::io::Write;
@@ -41,7 +42,7 @@ pub async fn start(
 
     // check if repo is in the vec (scoped mutex lock)
     {
-        let mut repos = ctx.data().repos.lock().unwrap();
+        let mut repos = ctx.data().repos.lock().await;
 
         if !repos.contains(&repo) {
             repos.push(repo.clone());
@@ -74,39 +75,39 @@ pub async fn start(
         repo.git_clone()?;
     }
 
-    // check if already running: todo
+    // check if already running - same scope to avoid race and starting twice if spamming /start
+    let response = {
+        let medusa = ctx.data().medusa_handler.lock().await;
+        let process_state = medusa.get_process_state(repo.name()).await; // read-only
 
-    let response = format!("Fuzzing campaign started for {}", repo.name());
+        match process_state {
+            Ok(MedusaState::Running { pid }) => {
+                format!(
+                    "Fuzzing campaign already running for {} (PID: {})",
+                    repo.name(),
+                    pid
+                )
+            }
+            Ok(_) => {
+                let medusa = ctx.data().medusa_handler.lock().await;
+                medusa.run_medusa(repo.name()).await?;
+                format!("Fuzzing campaign started for {}", repo.name())
+            }
+            Err(e) => {
+                format!("Error starting fuzzing campaign for {}: {}", repo.name(), e)
+            }
+        }
+    };
+
     ctx.say(response).await?;
     Ok(())
 }
-
-// async fn run_medusa(repo: &str) -> Result<String, Error> {
-//     //     use tokio::process::Command;
-//     //     use tokio::time::{Duration, timeout};
-
-//     let mut child = Command::new("medusa")
-//         .arg("fuzz")
-//         .arg("--repo")
-//         .arg(repo)
-//         .stdout(Stdio::null())
-//         .stderr(Stdio::null())
-//         .spawn()
-//         .map_err(|e| format!("Failed to spawn Medusa: {e}"))?;
-
-//     {
-//         let mut map = PROCESS_MAP.lock().await;
-//         map.insert(repo.to_string(), child);
-//     }
-
-//     Ok(format!("Started Medusa for {repo}"))
-// }
 
 /// Stop a given campaign (stop the fuzz but can be resumed later on using start)
 #[poise::command(slash_command)]
 pub async fn pause(
     ctx: Context<'_>,
-    #[description = "Campaign ID (see status cmd)"] campaign_id: u32,
+    #[description = "Repo name (see status cmd)"] repo_name: String,
 ) -> Result<(), Error> {
     // Check if campaign is running
     // if not, return an error
@@ -124,7 +125,7 @@ pub async fn pause(
 pub async fn status(ctx: Context<'_>) -> Result<(), Error> {
     // mutex inside {} avoiding locking in await
     let response = {
-        let repos = ctx.data().repos.lock().unwrap();
+        let repos = ctx.data().repos.lock().await;
         format!(
             "Currently {} campaigns: \n{}",
             repos.len(),
@@ -147,7 +148,7 @@ pub async fn status(ctx: Context<'_>) -> Result<(), Error> {
 #[poise::command(slash_command)]
 pub async fn stop(
     ctx: Context<'_>,
-    #[description = "Campaign ID (see status cmd)"] campaign_id: u32,
+    #[description = "Repo name (see status cmd)"] repo_name: String,
 ) -> Result<(), Error> {
     // check if campaign is running
     // if yes, stop it
