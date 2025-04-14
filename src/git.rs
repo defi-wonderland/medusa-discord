@@ -6,32 +6,21 @@ use std::process::Command;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct GitRepo {
     url: String,
-    branch: String,
-}
-
-pub struct GitRepoBuilder {
-    url: String,
     branch: Option<String>,
 }
 
-impl GitRepoBuilder {
-    pub fn new(url: String) -> Self {
-        Self { url, branch: None }
-    }
-
-    pub fn branch(mut self, branch: Option<String>) -> Self {
-        self.branch = branch;
-        self
-    }
-
-    pub fn build(self) -> GitRepo {
-        GitRepo::new(self.url, self.branch.unwrap_or_default())
+impl std::fmt::Display for GitRepo {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.name())
     }
 }
 
 impl GitRepo {
-    fn new(url: String, branch: String) -> Self {
-        Self { url, branch }
+    pub fn new(url: String) -> Self {
+        Self {
+            url: extract_dir_from_url(&url).unwrap(),
+            branch: extract_branch_from_url(&url).unwrap(),
+        }
     }
 
     /// Extracts the directory name from the URL
@@ -43,7 +32,7 @@ impl GitRepo {
         self.url.clone()
     }
 
-    pub fn branch(&self) -> String {
+    pub fn branch(&self) -> Option<String> {
         self.branch.clone()
     }
 
@@ -58,8 +47,8 @@ impl GitRepo {
             let mut cmd = Command::new("git");
             cmd.current_dir(REPO_DIR).arg("clone");
 
-            if !self.branch.is_empty() {
-                cmd.arg("--branch").arg(&self.branch);
+            if let Some(branch) = self.branch() {
+                cmd.arg("--branch").arg(&branch);
             }
             cmd.arg("--single-branch");
 
@@ -105,6 +94,18 @@ pub fn extract_dir_from_url(url: &str) -> Result<String, Error> {
         Ok(dir.to_string())
     } else {
         Ok(dir.to_string())
+    }
+}
+
+/// Extracts the branch name from the URL
+pub fn extract_branch_from_url(url: &str) -> Result<Option<String>, Error> {
+    let dir = url.split('/').last().ok_or("Wrong URL")?;
+
+    if dir.contains(":") {
+        let parts = dir.split(":").collect::<Vec<&str>>();
+        Ok(Some(parts[1].to_string()))
+    } else {
+        Ok(None)
     }
 }
 

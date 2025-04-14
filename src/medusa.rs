@@ -12,7 +12,7 @@ use tokio::sync::Mutex;
 use tokio::time::{Duration, timeout};
 
 use crate::Error;
-
+use crate::git::GitRepo;
 #[derive(Clone, Debug)]
 pub enum MedusaState {
     // keep the pid for now, selectively terminate some?
@@ -21,22 +21,44 @@ pub enum MedusaState {
     Error { message: String },
 }
 
-pub struct Medusa {
+impl std::fmt::Display for MedusaState {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            MedusaState::Running { pid } => write!(f, "Running (PID: {})", pid),
+            MedusaState::Stopped { status } => write!(f, "Stopped (Status: {})", status),
+            MedusaState::Error { message } => write!(f, "Error (Message: {})", message),
+        }
+    }
+}
+
+use crate::REPO_DIR;
+
+pub struct MedusaHandler {
     /// List of all active medusa processes and their current state
     process: Arc<Mutex<HashMap<String, MedusaState>>>,
 }
 
-impl Medusa {
+impl MedusaHandler {
     pub fn new() -> Self {
-        Self {
-            process: Arc::new(Mutex::new(HashMap::new())),
-        }
+        let process = Arc::new(Mutex::new(HashMap::new()));
+
+        Self { process }
     }
 
-    pub async fn run_medusa(self: &Self, repo: String) -> Result<String, Error> {
+    pub async fn start_all(self: &Self, repos: Vec<GitRepo>) -> Result<(), Error> {
+        for repo in repos {
+            self.run_medusa(repo.clone()).await?;
+        }
+
+        Ok(())
+    }
+
+    pub async fn run_medusa(self: &Self, repo: GitRepo) -> Result<u32, Error> {
         let mut child = Command::new("medusa")
-            .current_dir(repo.clone())
+            .current_dir(Path::new(REPO_DIR).join(repo.name()))
             .arg("fuzz")
+            .arg("-t")
+            .arg("5")
             .stdout(Stdio::null())
             .stderr(Stdio::null())
             .spawn()
@@ -50,7 +72,7 @@ impl Medusa {
         // Add the process to the map, as "running"
         {
             let mut map = self.process.lock().await;
-            map.insert(repo.to_string(), MedusaState::Running { pid: child_pid });
+            map.insert(repo.name(), MedusaState::Running { pid: child_pid });
         }
 
         // spawn a monitoring task, to update the process state (ie err/exit)
@@ -59,9 +81,9 @@ impl Medusa {
             let mut map = process_clone.lock().await;
 
             match status {
-                Ok(status) => map.insert(repo_clone.to_string(), MedusaState::Stopped { status }),
+                Ok(status) => map.insert(repo_clone.name(), MedusaState::Stopped { status }),
                 Err(err) => map.insert(
-                    repo_clone.to_string(),
+                    repo_clone.name(),
                     MedusaState::Error {
                         message: err.to_string(),
                     },
@@ -69,7 +91,7 @@ impl Medusa {
             };
         });
 
-        Ok(format!("Started Medusa for {repo}"))
+        Ok(child_pid)
     }
 
     pub async fn stop_process(self: &Self, repo: String) -> Result<(), Error> {

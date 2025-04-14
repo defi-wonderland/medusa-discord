@@ -3,10 +3,7 @@
 mod commands;
 mod git;
 mod medusa;
-use crate::{
-    git::{GitRepo, GitRepoBuilder},
-    medusa::Medusa,
-};
+use crate::{git::GitRepo, medusa::MedusaHandler};
 
 use poise::serenity_prelude as serenity;
 use std::io::BufRead;
@@ -24,7 +21,7 @@ const REPO_DIR: &str = "repos";
 pub struct Data {
     /// List of all active repo
     repos: Mutex<Vec<GitRepo>>,
-    medusa_handler: Mutex<Medusa>,
+    medusa_handler: Arc<Mutex<MedusaHandler>>,
 }
 
 async fn on_error(error: poise::FrameworkError<'_, Data, Error>) {
@@ -70,25 +67,8 @@ fn load_repos() -> Mutex<Vec<GitRepo>> {
     let repos_reader = std::io::BufReader::new(repos_file);
 
     for line in repos_reader.lines() {
-        // Handle potential errors when reading lines
         match line {
-            Ok(repo) => {
-                // we store an optional after the repo url, with a colon as separator
-                if repo.contains(":") {
-                    let parts = repo.split(":").collect::<Vec<&str>>();
-                    let repo = parts[0];
-                    let branch = parts[1];
-                    repos.push(
-                        GitRepoBuilder::new(repo.to_string())
-                            .branch(Some(branch.to_string()))
-                            .build(),
-                    )
-                } else {
-                    let repo = repo;
-                    let branch = None;
-                    repos.push(GitRepoBuilder::new(repo).branch(branch).build())
-                }
-            }
+            Ok(repo) => repos.push(GitRepo::new(repo.to_string())),
             Err(e) => eprintln!("Error reading line from repos.txt: {}", e),
         }
     }
@@ -153,9 +133,15 @@ async fn main() {
             Box::pin(async move {
                 println!("Logged in as {}", _ready.user.name);
                 poise::builtins::register_globally(ctx, &framework.options().commands).await?;
+
+                let repos = load_repos();
+                let medusa_handler = MedusaHandler::new();
+
+                medusa_handler.start_all(repos.lock().await.clone()).await?;
+
                 Ok(Data {
-                    repos: load_repos(),
-                    medusa_handler: Mutex::new(Medusa::new()),
+                    repos,
+                    medusa_handler: Arc::new(Mutex::new(medusa_handler)),
                 })
             })
         })

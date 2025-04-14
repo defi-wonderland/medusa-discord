@@ -1,4 +1,4 @@
-use crate::git::{GitRepoBuilder, extract_dir_from_url};
+use crate::git::GitRepo;
 use crate::medusa::MedusaState;
 use crate::{Context, Error, REPO_DIR};
 use std::fs::OpenOptions;
@@ -36,9 +36,13 @@ pub async fn start(
 
     let mut add_to_list = false;
 
-    let repo = GitRepoBuilder::new(repo_url.clone())
-        .branch(branch.clone())
-        .build();
+    let repo_with_branch = if let Some(branch) = branch {
+        format!("{}:{}", repo_url, branch.clone())
+    } else {
+        repo_url.clone()
+    };
+
+    let repo = GitRepo::new(repo_with_branch.clone());
 
     // check if repo is in the vec (scoped mutex lock)
     {
@@ -56,14 +60,8 @@ pub async fn start(
             .open(Path::new(REPO_DIR).join("repos.txt"))
             .expect("Failed to open repos.txt");
 
-        let repo_with_branch = if branch.is_some() {
-            format!("{}:{}", repo_url, branch.clone().unwrap())
-        } else {
-            repo_url.clone()
-        };
-
         repos_file
-            .write_all(repo_with_branch.as_bytes())
+            .write_all((repo_with_branch + "\n").as_bytes())
             .expect("Failed to write to repos.txt");
     }
 
@@ -90,8 +88,8 @@ pub async fn start(
             }
             Ok(_) => {
                 let medusa = ctx.data().medusa_handler.lock().await;
-                medusa.run_medusa(repo.name()).await?;
-                format!("Fuzzing campaign started for {}", repo.name())
+                medusa.run_medusa(repo.clone()).await?;
+                format!("Fuzzing campaign started for {}", repo)
             }
             Err(e) => {
                 format!("Error starting fuzzing campaign for {}: {}", repo.name(), e)
@@ -114,6 +112,10 @@ pub async fn pause(
     // if yes, stop it
     // remove from the vec and repos.txt file
     // return the stats
+    {
+        let medusa = ctx.data().medusa_handler.lock().await;
+        medusa.stop_process(repo_name).await?;
+    }
 
     let response = format!("Ok");
     ctx.say(response).await?;
@@ -124,23 +126,34 @@ pub async fn pause(
 #[poise::command(slash_command)]
 pub async fn status(ctx: Context<'_>) -> Result<(), Error> {
     // mutex inside {} avoiding locking in await
-    let response = {
+    let mut repo_names = Vec::new();
+    let mut medusa_status = Vec::new();
+
+    {
         let repos = ctx.data().repos.lock().await;
-        format!(
-            "Currently {} campaigns: \n{}",
-            repos.len(),
-            repos
-                .iter()
-                .map(|r| r.name())
-                .collect::<Vec<String>>()
-                .join(",\n")
-        )
-    };
+        let medusa = ctx.data().medusa_handler.lock().await;
 
-    // loop over all campaigns
-    // for each, collect the stats
+        for repo in repos.iter() {
+            let repo_status = medusa.get_process_state(repo.name()).await?;
 
-    ctx.say(response).await?;
+            repo_names.push(repo.clone().name());
+
+            medusa_status.push(format!("{}: {}\n", repo.name(), repo_status));
+        }
+    }
+
+    let repo_list = format!("Currently {} campaigns: \n", repo_names.len());
+
+    ctx.say(repo_list).await?;
+    ctx.say(
+        medusa_status
+            .iter()
+            .map(|s| s.as_str())
+            .collect::<Vec<&str>>()
+            .join(",\n"),
+    )
+    .await?;
+
     Ok(())
 }
 
