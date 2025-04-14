@@ -47,6 +47,7 @@ impl MedusaHandler {
 
     pub async fn start_all(self: &Self, repos: Vec<GitRepo>) -> Result<(), Error> {
         for repo in repos {
+            repo.git_sync().await?;
             self.run_medusa(repo.clone()).await?;
         }
 
@@ -57,10 +58,8 @@ impl MedusaHandler {
         let mut child = Command::new("medusa")
             .current_dir(Path::new(REPO_DIR).join(repo.name()))
             .arg("fuzz")
-            .arg("-t")
+            .arg("--timeout")
             .arg("5")
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
             .spawn()
             .map_err(|e| format!("Failed to spawn Medusa: {e}"))?;
 

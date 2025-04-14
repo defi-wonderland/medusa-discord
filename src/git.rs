@@ -1,4 +1,5 @@
 use crate::{Error, REPO_DIR};
+use std::fmt::format;
 use std::path::Path;
 use std::process::Command;
 
@@ -18,7 +19,7 @@ impl std::fmt::Display for GitRepo {
 impl GitRepo {
     pub fn new(url: String) -> Self {
         Self {
-            url: extract_dir_from_url(&url).unwrap(),
+            url: extract_url_without_branch(&url).unwrap(),
             branch: extract_branch_from_url(&url).unwrap(),
         }
     }
@@ -36,13 +37,21 @@ impl GitRepo {
         self.branch.clone()
     }
 
-    /// Clones the repository (only clone one branch for performance)
-    pub fn git_clone(&self) -> Result<(), Error> {
+    /// Clones or pull the repository (only one branch for performance)
+    pub async fn git_sync(&self) -> Result<(), Error> {
         let dir = extract_dir_from_url(&self.url).unwrap();
         let path = Path::new(REPO_DIR).join(&dir);
 
         if path.exists() {
-            return Err("Repo already exists".into());
+            let result = Command::new("git")
+                .current_dir(path)
+                .arg("pull")
+                .status()
+                .map_err(|e| format!("Failed to pull repo: {e}"))?;
+
+            if !result.success() {
+                return Err(format!("Failed to pull repo with err status {result}").into());
+            }
         } else {
             let mut cmd = Command::new("git");
             cmd.current_dir(REPO_DIR).arg("clone");
@@ -54,31 +63,13 @@ impl GitRepo {
 
             cmd.arg(&self.url);
 
-            let result = cmd
+            let status = cmd
                 .status()
                 .map_err(|e| format!("Failed to clone repo: {e}"))?;
 
-            if !result.success() {
-                return Err("Failed to clone repo".into());
+            if !status.success() {
+                return Err(format!("Failed to clone repo with err status {status}").into());
             }
-        }
-
-        Ok(())
-    }
-
-    /// Pulls the repository in the corresponding directory (based on the name in the url)
-    pub fn git_pull(&self) -> Result<(), Error> {
-        let dir = extract_dir_from_url(&self.url).unwrap();
-        let path = Path::new(REPO_DIR).join(&dir);
-
-        let result = Command::new("git")
-            .current_dir(path)
-            .arg("pull")
-            .status()
-            .map_err(|e| format!("Failed to pull repo: {e}"))?;
-
-        if !result.success() {
-            return Err("Failed to pull repo".into());
         }
 
         Ok(())
@@ -109,6 +100,21 @@ pub fn extract_branch_from_url(url: &str) -> Result<Option<String>, Error> {
     }
 }
 
+/// Extracts the URL without the branch
+pub fn extract_url_without_branch(url: &str) -> Result<String, Error> {
+    // only keep what comes after the last column if there are 2
+
+    let parts = url.split(':').collect::<Vec<&str>>();
+
+    if parts.len() == 3 {
+        Ok(format!("{}:{}", parts[0], parts[1]))
+    } else if parts.len() == 2 {
+        Ok(url.to_string())
+    } else {
+        Err("Wrong URL".into())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -118,5 +124,23 @@ mod tests {
         let url = "https://github.com/abc/def-ghi5.git";
         let dir = extract_dir_from_url(url).unwrap();
         assert_eq!(dir, "def-ghi5");
+    }
+
+    #[test]
+    fn test_extract_branch_from_url() {
+        let url = "https://github.com/abc/def-ghi5.git:abcdef";
+        let branch = extract_branch_from_url(url).unwrap();
+        assert_eq!(branch, Some("abcdef".to_string()));
+    }
+
+    #[test]
+    fn test_extract_url_without_branch() {
+        let url = "https://github.com/abc/def-ghi5.git";
+        let url_without_branch = extract_url_without_branch(url).unwrap();
+        assert_eq!(url_without_branch, "https://github.com/abc/def-ghi5.git");
+
+        let url = "https://github.com/abc/def-ghi5.git:abcdef";
+        let url_without_branch = extract_url_without_branch(url).unwrap();
+        assert_eq!(url_without_branch, "https://github.com/abc/def-ghi5.git");
     }
 }

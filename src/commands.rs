@@ -65,13 +65,7 @@ pub async fn start(
             .expect("Failed to write to repos.txt");
     }
 
-    let dir = Path::new(REPO_DIR).join(repo.name());
-
-    if dir.exists() {
-        repo.git_pull()?;
-    } else {
-        repo.git_clone()?;
-    }
+    repo.git_sync().await?;
 
     // check if already running - same scope to avoid race and starting twice if spamming /start
     let response = {
@@ -87,7 +81,6 @@ pub async fn start(
                 )
             }
             Ok(_) => {
-                let medusa = ctx.data().medusa_handler.lock().await;
                 medusa.run_medusa(repo.clone()).await?;
                 format!("Fuzzing campaign started for {}", repo)
             }
