@@ -44,7 +44,7 @@ impl GitRepo {
 
         if path.exists() {
             let result = Command::new("git")
-                .current_dir(path)
+                .current_dir(&path)
                 .arg("pull")
                 .status()
                 .map_err(|e| format!("Failed to pull repo: {e}"))?;
@@ -71,6 +71,20 @@ impl GitRepo {
                 return Err(format!("Failed to clone repo with err status {status}").into());
             }
         }
+
+        if path.join("package.json").exists() {
+            let _ = Command::new("yarn")
+                .current_dir(&path)
+                .arg("install")
+                .status()
+                .map_err(|e| format!("Failed to install npm: {e}"))?;
+        }
+
+        let _ = Command::new("forge")
+            .current_dir(&path)
+            .arg("install")
+            .status()
+            .map_err(|e| format!("Failed to install npm: {e}"))?;
 
         Ok(())
     }

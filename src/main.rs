@@ -21,6 +21,7 @@ const REPO_DIR: &str = "repos";
 pub struct Data {
     /// List of all active repo
     repos: Mutex<Vec<GitRepo>>,
+    /// All the medusa processes with their current state
     medusa_handler: Arc<Mutex<MedusaHandler>>,
 }
 

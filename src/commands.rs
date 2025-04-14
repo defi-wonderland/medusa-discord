@@ -70,19 +70,20 @@ pub async fn start(
     // check if already running - same scope to avoid race and starting twice if spamming /start
     let response = {
         let medusa = ctx.data().medusa_handler.lock().await;
+        medusa.run_medusa(repo.clone()).await?;
+
         let process_state = medusa.get_process_state(repo.name()).await; // read-only
 
         match process_state {
             Ok(MedusaState::Running { pid }) => {
                 format!(
-                    "Fuzzing campaign already running for {} (PID: {})",
+                    "Fuzzing campaign running for {} (PID: {})",
                     repo.name(),
                     pid
                 )
             }
             Ok(_) => {
-                medusa.run_medusa(repo.clone()).await?;
-                format!("Fuzzing campaign started for {}", repo)
+                format!("Failed to launch {}", repo)
             }
             Err(e) => {
                 format!("Error starting fuzzing campaign for {}: {}", repo.name(), e)
@@ -136,16 +137,16 @@ pub async fn status(ctx: Context<'_>) -> Result<(), Error> {
     }
 
     let repo_list = format!("Currently {} campaigns: \n", repo_names.len());
+    let all_status = medusa_status
+        .iter()
+        .map(|s| s.as_str())
+        .collect::<Vec<&str>>()
+        .join(",\n");
 
     ctx.say(repo_list).await?;
-    ctx.say(
-        medusa_status
-            .iter()
-            .map(|s| s.as_str())
-            .collect::<Vec<&str>>()
-            .join(",\n"),
-    )
-    .await?;
+    if !all_status.is_empty() {
+        ctx.say(all_status).await?;
+    }
 
     Ok(())
 }
