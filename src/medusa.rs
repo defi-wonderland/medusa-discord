@@ -12,6 +12,7 @@ use tokio::sync::Mutex;
 use tokio::time::{Duration, timeout};
 
 use crate::Error;
+use crate::MEDUSA_TIMEOUT;
 use crate::git::GitRepo;
 #[derive(Clone, Debug)]
 pub enum MedusaState {
@@ -59,7 +60,7 @@ impl MedusaHandler {
             .current_dir(Path::new(REPO_DIR).join(repo.name()))
             .arg("fuzz")
             .arg("--timeout")
-            .arg("5")
+            .arg(MEDUSA_TIMEOUT)
             .spawn()
             .map_err(|e| format!("Failed to spawn Medusa: {e}"))?;
 
@@ -100,7 +101,10 @@ impl MedusaHandler {
 
         match state {
             MedusaState::Running { pid } => {
-                Command::new("kill").arg(pid.to_string()).spawn()?;
+                Command::new("kill")
+                    .arg("-2")
+                    .arg(pid.to_string())
+                    .spawn()?;
             }
             _ => return Err(format!("Repo {repo} is not running").into()),
         }

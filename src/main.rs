@@ -16,7 +16,7 @@ type Error = Box<dyn std::error::Error + Send + Sync>;
 type Context<'a> = poise::Context<'a, Data, Error>;
 
 const REPO_DIR: &str = "repos";
-
+const MEDUSA_TIMEOUT: &str = "3600";
 // Data shared between all commands
 pub struct Data {
     /// List of all active repo
@@ -57,11 +57,10 @@ fn load_repos() -> Mutex<Vec<GitRepo>> {
 
     let path = Path::new(REPO_DIR).join("repos.txt");
 
-    // Use OpenOptions to open for read/write, creating if it doesn't exist.
     let repos_file = OpenOptions::new()
         .read(true)
-        .write(true) // Needed for .create(true)
-        .create(true) // Create the file if it doesn't exist
+        .write(true)
+        .create(true)
         .open(path)
         .expect("Failed to open or create repos.txt");
 

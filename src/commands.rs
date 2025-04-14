@@ -2,9 +2,9 @@ use crate::git::GitRepo;
 use crate::medusa::MedusaState;
 use crate::{Context, Error, REPO_DIR};
 use std::fs::OpenOptions;
+use std::io::Read;
 use std::io::Write;
 use std::path::Path;
-
 /// Show this help menu
 #[poise::command(prefix_command, track_edits, slash_command)]
 pub async fn help(
@@ -108,10 +108,10 @@ pub async fn pause(
     // return the stats
     {
         let medusa = ctx.data().medusa_handler.lock().await;
-        medusa.stop_process(repo_name).await?;
+        medusa.stop_process(repo_name.clone()).await?;
     }
 
-    let response = format!("Ok");
+    let response = format!("Paused {}", repo_name);
     ctx.say(response).await?;
     Ok(())
 }
@@ -162,8 +162,71 @@ pub async fn stop(
     // move the corpus to archive/
     // remove from the vec and repos.txt file
     // return the stats
+    {
+        let medusa = ctx.data().medusa_handler.lock().await;
+        medusa.stop_process(repo_name.clone()).await?;
+    }
 
-    let response = format!("Ok");
+    let repo = {
+        let repos = ctx.data().repos.lock().await;
+        let repo = repos.iter().find(|r| r.name() == repo_name).unwrap();
+        repo.clone()
+    };
+
+    let repo_with_branch = if repo.branch().is_some() {
+        format!("{}:{}", repo.url(), repo.branch().unwrap())
+    } else {
+        repo.url()
+    };
+
+    // move the repo url from repos.txt to archive/archive.txt
+    let archive_dir = Path::new(REPO_DIR).join("archive");
+    if !archive_dir.exists() {
+        std::fs::create_dir(archive_dir.clone()).expect("Failed to create archive directory");
+    }
+
+    let mut archive_file = OpenOptions::new()
+        .append(true)
+        .create(true)
+        .open(Path::new(REPO_DIR).join("archive").join("archive.txt"))
+        .expect("Failed to open or create archive.txt");
+
+    archive_file
+        .write_all((repo_with_branch.clone() + "\n").as_bytes())
+        .expect("Failed to write to archive.txt");
+
+    let path = Path::new(REPO_DIR).join("repos.txt");
+    let mut repos_file = OpenOptions::new()
+        .read(true)
+        .write(true)
+        .open(path)
+        .expect("Failed to open repos.txt");
+
+    let mut repos_file_content = String::new();
+    repos_file
+        .read_to_string(&mut repos_file_content)
+        .expect("Failed to read repos.txt");
+
+    let mut repos_file_content = repos_file_content.split("\n").collect::<Vec<&str>>();
+    repos_file_content.remove(
+        repos_file_content
+            .iter()
+            .position(|r| *r == repo_with_branch)
+            .unwrap_or_else(|| panic!("Failed to find repo in repos.txt: {}", &repo_with_branch)),
+    );
+
+    repos_file
+        .write_all(repos_file_content.join("\n").as_bytes())
+        .expect("Failed to write to repos.txt");
+
+    // move the folder to archive
+    let repo_dir = Path::new(REPO_DIR).join(repo_name.clone());
+    if repo_dir.exists() {
+        let new_path = archive_dir.join(repo_name.clone());
+        std::fs::rename(repo_dir, new_path).expect("Failed to move repo to archive");
+    }
+
+    let response = format!("Archived {}", repo_name);
     ctx.say(response).await?;
     Ok(())
 }
